@@ -1,12 +1,17 @@
-
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 
-st.set_page_config(page_title="Tablero Campeonato 2026", layout="wide")
+st.set_page_config(page_title="Campeonato Bursátil 2026", layout="wide")
 
-# --- 1. BASE DE DATOS DE TICKERS ---
+# --- 1. CONFIGURACIÓN DE RONDAS Y FECHAS ---
+# Aquí definimos cuándo empieza y termina cada mes oficialmente
+RONDAS = {
+    "Ronda 1 (Feb/Mar)": {"inicio": "2026-02-17", "fin": "2026-03-31"},
+    "Ronda 2 (Abril)": {"inicio": "2026-04-01", "fin": "2026-04-30"},
+}
+
 TICKERS = [
     "MSFT", "NVDA", "GOOGL", "META", "TSM", "V", "BRK-B", "JPM", "ASML", "INTC", 
     "AMD", "COST", "WMT", "PG", "GE", "DE", "RTX", "JNJ", "UNH", "LLY", 
@@ -14,135 +19,73 @@ TICKERS = [
     "GLD", "IBIT", "ARKK", "COPX"
 ]
 
-# --- 2. ENTRADA DE DATOS DE LAS IA (Cargados desde tu análisis) ---
-PREDICCIONES = {
+# --- 2. PREDICCIONES POR RONDA (Base de Datos) ---
+# Aquí iremos agregando los bloques de cada mes.
+DATOS_IA = {
     "GPT FRICAS": {
-        "pick_estrella": "XLE",
-        "top_15": ["NVDA", "META", "TSM", "ASML", "MSFT", "AMZN", "GOOGL", "LLY", "COST", "V", "QQQ", "GE", "DE", "SPY", "XLE"],
-        "top_3_ganadoras": ["XLE", "RTX", "GLD"],
-        "top_3_perdedoras": ["ARKK", "TSLA", "INTC"]
-    },
-    "GPT WARREN": {
-        "pick_estrella": "NVDA",
-        "top_15": ["NVDA", "TSM", "ASML", "AMZN", "GOOGL", "WMT", "COST", "LLY", "RTX", "GE", "DE", "PG", "KO", "V", "BRK-B"],
-        "top_3_ganadoras": ["NVDA", "TSM", "ASML"],
-        "top_3_perdedoras": ["ARKK", "TSLA", "INTC"]
-    },
-    "GPT AG": {
-        "pick_estrella": "INTC",
-        "top_15": ["INTC", "ASML", "TSM", "COPX", "WMT", "JNJ", "PG", "COST", "RTX", "META", "KO", "ACWI", "QQQ", "BRK-B", "VTI"],
-        "top_3_ganadoras": ["INTC", "ASML", "TSM"],
-        "top_3_perdedoras": ["AMZN", "UNH", "MSFT"]
+        "Ronda 1": {"estrella": "XLE", "top15": ["NVDA", "META", "TSM", "ASML", "MSFT", "AMZN", "GOOGL", "LLY", "COST", "V", "QQQ", "GE", "DE", "SPY", "XLE"]},
+        "Anual": ["NVDA", "AMZN", "MSFT", "GOOGL", "META", "TSM", "LLY", "AVGO", "COST", "GE", "XLE", "IBIT"]
     },
     "GEMI AG": {
-        "pick_estrella": "NVDA",
-        "top_15": ["NVDA", "MSFT", "TSM", "LLY", "COPX", "AMZN", "META", "ASML", "GOOGL", "AMD", "JPM", "GE", "SPY", "QQQ", "VTI"],
-        "top_3_ganadoras": ["NVDA", "MSFT", "TSM"],
-        "top_3_perdedoras": ["IBIT", "ARKK", "INTC"]
-    },
-    "GEMI FRICAS": {
-        "pick_estrella": "NVDA",
-        "top_15": ["NVDA", "LLY", "AVGO", "TSM", "AMD", "META", "ASML", "MSFT", "GOOGL", "AMZN", "GE", "RTX", "COST", "V", "JPM"],
-        "top_3_ganadoras": ["NVDA", "LLY", "AVGO"],
-        "top_3_perdedoras": ["INTC", "TSLA", "DE"]
-    },
-    "GEMI WARREN": {
-        "pick_estrella": "BRK-B",
-        "top_15": ["BRK-B", "JPM", "V", "PG", "KO", "WMT", "COST", "JNJ", "UNH", "LLY", "AAPL", "MSFT", "GOOGL", "SPY", "VTI"],
-        "top_3_ganadoras": ["BRK-B", "JPM", "V"],
-        "top_3_perdedoras": ["ARKK", "IBIT", "NVDA"]
+        "Ronda 1": {"estrella": "NVDA", "top15": ["NVDA", "MSFT", "TSM", "LLY", "COPX", "AMZN", "META", "ASML", "GOOGL", "AMD", "JPM", "GE", "SPY", "QQQ", "VTI"]},
+        "Anual": ["NVDA", "COPX", "LLY", "GLD", "JPM", "AVGO", "TSM", "MSFT", "GOOGL", "META", "AMZN", "V"]
     },
     "CLAUDE ANALISTA": {
-        "pick_estrella": "DE",
-        "top_15": ["DE", "NVDA", "LLY", "GE", "AMD", "META", "TSM", "GOOGL", "AMZN", "ASML", "MSFT", "RTX", "JPM", "COST", "V"],
-        "top_3_ganadoras": ["DE", "NVDA", "LLY"],
-        "top_3_perdedoras": ["TSLA", "INTC", "IBIT"]
-    },
-    "CLAUDE FRICAS": {
-        "pick_estrella": "ASML",
-        "top_15": ["ASML", "TSM", "NVDA", "AVGO", "AMD", "MSFT", "META", "GOOGL", "AMZN", "LLY", "GE", "RTX", "COPX", "QQQ", "XLE"],
-        "top_3_ganadoras": ["ASML", "TSM", "NVDA"],
-        "top_3_perdedoras": ["PG", "KO", "JNJ"]
-    },
-    "CLAUDE WARREN": {
-        "pick_estrella": "JPM",
-        "top_15": ["JPM", "V", "BRK-B", "COST", "WMT", "PG", "KO", "JNJ", "UNH", "LLY", "AAPL", "MSFT", "GOOGL", "SPY", "ACWI"],
-        "top_3_ganadoras": ["JPM", "V", "BRK-B"],
-        "top_3_perdedoras": ["ARKK", "TSLA", "COPX"]
+        "Ronda 1": {"estrella": "DE", "top15": ["DE", "NVDA", "LLY", "GE", "AMD", "META", "TSM", "GOOGL", "AMZN", "ASML", "MSFT", "RTX", "JPM", "COST", "V"]},
+        "Anual": ["NVDA", "LLY", "TSM", "AMZN", "META", "ASML", "MSFT", "GOOGL", "AVGO", "GE", "DE", "V"]
     }
 }
+
 # --- 3. MOTOR DE CÁLCULO ---
 @st.cache_data
-def obtener_datos(start, end):
-    end_adj = end + timedelta(days=1)
-    data = yf.download(TICKERS, start=start, end=end_adj, auto_adjust=True)['Close']
-    
+def traer_datos(inicio, fin):
+    data = yf.download(TICKERS, start=inicio, end=fin, auto_adjust=True)['Close']
     res = []
     for t in TICKERS:
         try:
-            val_inicio = data[t].dropna().iloc[0]
-            val_fin = data[t].dropna().iloc[-1]
-            var = ((val_fin / val_inicio) - 1) * 100
+            v_ini = data[t].dropna().iloc[0]
+            v_fin = data[t].dropna().iloc[-1]
+            var = ((v_fin / v_ini) - 1) * 100
             res.append({"Ticker": t, "Variacion": var})
         except: pass
-    
     df = pd.DataFrame(res).sort_values("Variacion", ascending=False).reset_index(drop=True)
     df.index += 1
     return df
 
 # --- 4. INTERFAZ ---
-st.title("🏆 Campeonato Bursátil 2026")
-col1, col2 = st.columns([1, 3])
+st.title("🏆 Gran Campeonato Bursátil 2026")
 
-with col1:
-    st.header("Configuración")
-    fecha_inicio = st.date_input("Inicio de Ronda", datetime(2026, 2, 17))
-    fecha_fin = st.date_input("Cierre de Ronda", datetime.today())
-    boton = st.button("🚀 ACTUALIZAR TABLERO")
+tab1, tab2 = st.tabs(["📊 Ranking Acumulado", "📅 Detalle por Ronda"])
 
-if boton:
-    df_mercado = obtener_datos(fecha_inicio, fecha_fin)
-    ranking_list = df_mercado["Ticker"].tolist()
+with tab2:
+    st.header("Análisis Mensual")
+    ronda_sel = st.selectbox("Selecciona la Ronda a visualizar:", list(RONDAS.keys()))
     
-    st.session_state.resultados = []
-
-    for nombre, datos in PREDICCIONES.items():
-        pts_total = 0
-        
-        # Regla 1: Top 15 (10 pts c/u si están en el top 15 real)
-        top_15_real = ranking_list[:15]
-        aciertos_t15 = len(set(datos["top_15"]) & set(top_15_real))
-        pts_total += aciertos_t15 * 10
-        
-        # Regla 4: Pick Estrella
-        pos_estrella = ranking_list.index(datos["pick_estrella"]) + 1
-        pts_estrella = 0
-        if pos_estrella == 1: pts_estrella = 40
-        elif pos_estrella <= 3: pts_estrella = 20
-        elif pos_estrella >= 25: pts_estrella = -40
-        pts_total += pts_estrella
-        
-        st.session_state.resultados.append({
-            "Competidor": nombre,
-            "Puntos": pts_total,
-            "Aciertos T15": aciertos_t15,
-            "Pos. Estrella": pos_estrella
-        })
-
-    # --- DASHBOARD VISUAL ---
-    res_df = pd.DataFrame(st.session_state.resultados).sort_values("Puntos", ascending=False)
+    # Calculamos datos de la ronda seleccionada
+    df_mkt = traer_datos(RONDAS[ronda_sel]["inicio"], RONDAS[ronda_sel]["fin"])
+    ranking_mkt = df_mkt["Ticker"].tolist()
     
-    st.subheader("🔥 Ranking de Competidores")
-    # Gráfico de barras interactivo
-    st.bar_chart(data=res_df, x="Competidor", y="Puntos", color="Competidor")
-    
-    col_t1, col_t2 = st.columns(2)
-    with col_t1:
-        st.write("### 📋 Tabla de Posiciones")
-        st.dataframe(res_df.set_index("Competidor"), use_container_width=True)
-    
-    with col_t2:
-        st.write("### 📈 Mercado (Top 5 del Mes)")
-        st.table(df_mercado.head(5))
+    # Calculamos puntos de la ronda
+    resultados_ronda = []
+    for nombre, predicciones in DATOS_IA.items():
+        if "Ronda 1" in predicciones: # Por ahora solo evaluamos R1
+            puntos = 0
+            # Regla 1 (Top 15)
+            aciertos = len(set(predicciones["Ronda 1"]["top15"]) & set(ranking_mkt[:15]))
+            puntos += aciertos * 10
+            # Regla 4 (Estrella)
+            pos_est = ranking_mkt.index(predicciones["Ronda 1"]["estrella"]) + 1
+            pts_est = 40 if pos_est == 1 else 20 if pos_est <= 3 else -40 if pos_est >= 25 else 0
+            puntos += pts_est
+            
+            resultados_ronda.append({"IA": nombre, "Puntos Ronda": puntos, "Aciertos T15": aciertos, "Pos. Estrella": pos_est})
 
-    st.balloons() # ¡Festejo automático cuando termina el cálculo!
+    res_df = pd.DataFrame(resultados_ronda).sort_values("Puntos Ronda", ascending=False)
+    st.table(res_df)
+
+with tab1:
+    st.header("🏆 Clasificación General del Año")
+    # Aquí sumaremos los puntos de todas las rondas
+    # Por ahora simulamos el acumulado con la Ronda 1
+    st.bar_chart(res_df.set_index("IA")["Puntos Ronda"])
+    st.write("Esta tabla sumará automáticamente los puntos de cada mes a medida que los completemos.")
