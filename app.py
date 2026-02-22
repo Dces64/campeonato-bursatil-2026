@@ -14,8 +14,7 @@ TICKERS = [
     "GLD", "IBIT", "ARKK", "COPX"
 ]
 
-# --- 2. ENTRADA DE DATOS DE LAS IA (Aquí es donde pegarás las respuestas) ---
-# He cargado un ejemplo basado en tus archivos para que veas la magia
+# --- 2. ENTRADA DE DATOS DE LAS IA (Cargados desde tu análisis) ---
 PREDICCIONES = {
     "GPT FRICAS": {
         "pick_estrella": "XLE",
@@ -23,14 +22,55 @@ PREDICCIONES = {
         "top_3_ganadoras": ["XLE", "RTX", "GLD"],
         "top_3_perdedoras": ["ARKK", "TSLA", "INTC"]
     },
+    "GPT WARREN": {
+        "pick_estrella": "NVDA",
+        "top_15": ["NVDA", "TSM", "ASML", "AMZN", "GOOGL", "WMT", "COST", "LLY", "RTX", "GE", "DE", "PG", "KO", "V", "BRK-B"],
+        "top_3_ganadoras": ["NVDA", "TSM", "ASML"],
+        "top_3_perdedoras": ["ARKK", "TSLA", "INTC"]
+    },
+    "GPT AG": {
+        "pick_estrella": "INTC",
+        "top_15": ["INTC", "ASML", "TSM", "COPX", "WMT", "JNJ", "PG", "COST", "RTX", "META", "KO", "ACWI", "QQQ", "BRK-B", "VTI"],
+        "top_3_ganadoras": ["INTC", "ASML", "TSM"],
+        "top_3_perdedoras": ["AMZN", "UNH", "MSFT"]
+    },
     "GEMI AG": {
         "pick_estrella": "NVDA",
         "top_15": ["NVDA", "MSFT", "TSM", "LLY", "COPX", "AMZN", "META", "ASML", "GOOGL", "AMD", "JPM", "GE", "SPY", "QQQ", "VTI"],
         "top_3_ganadoras": ["NVDA", "MSFT", "TSM"],
         "top_3_perdedoras": ["IBIT", "ARKK", "INTC"]
+    },
+    "GEMI FRICAS": {
+        "pick_estrella": "NVDA",
+        "top_15": ["NVDA", "LLY", "AVGO", "TSM", "AMD", "META", "ASML", "MSFT", "GOOGL", "AMZN", "GE", "RTX", "COST", "V", "JPM"],
+        "top_3_ganadoras": ["NVDA", "LLY", "AVGO"],
+        "top_3_perdedoras": ["INTC", "TSLA", "DE"]
+    },
+    "GEMI WARREN": {
+        "pick_estrella": "BRK-B",
+        "top_15": ["BRK-B", "JPM", "V", "PG", "KO", "WMT", "COST", "JNJ", "UNH", "LLY", "AAPL", "MSFT", "GOOGL", "SPY", "VTI"],
+        "top_3_ganadoras": ["BRK-B", "JPM", "V"],
+        "top_3_perdedoras": ["ARKK", "IBIT", "NVDA"]
+    },
+    "CLAUDE ANALISTA": {
+        "pick_estrella": "DE",
+        "top_15": ["DE", "NVDA", "LLY", "GE", "AMD", "META", "TSM", "GOOGL", "AMZN", "ASML", "MSFT", "RTX", "JPM", "COST", "V"],
+        "top_3_ganadoras": ["DE", "NVDA", "LLY"],
+        "top_3_perdedoras": ["TSLA", "INTC", "IBIT"]
+    },
+    "CLAUDE FRICAS": {
+        "pick_estrella": "ASML",
+        "top_15": ["ASML", "TSM", "NVDA", "AVGO", "AMD", "MSFT", "META", "GOOGL", "AMZN", "LLY", "GE", "RTX", "COPX", "QQQ", "XLE"],
+        "top_3_ganadoras": ["ASML", "TSM", "NVDA"],
+        "top_3_perdedoras": ["PG", "KO", "JNJ"]
+    },
+    "CLAUDE WARREN": {
+        "pick_estrella": "JPM",
+        "top_15": ["JPM", "V", "BRK-B", "COST", "WMT", "PG", "KO", "JNJ", "UNH", "LLY", "AAPL", "MSFT", "GOOGL", "SPY", "ACWI"],
+        "top_3_ganadoras": ["JPM", "V", "BRK-B"],
+        "top_3_perdedoras": ["ARKK", "TSLA", "COPX"]
     }
 }
-
 # --- 3. MOTOR DE CÁLCULO ---
 @st.cache_data
 def obtener_datos(start, end):
@@ -89,11 +129,20 @@ if boton:
             "Pos. Estrella": pos_estrella
         })
 
-    # --- DASHBOARD ---
+    # --- DASHBOARD VISUAL ---
     res_df = pd.DataFrame(st.session_state.resultados).sort_values("Puntos", ascending=False)
     
-    st.subheader("🔥 Ranking en Tiempo Real")
-    st.table(res_df)
+    st.subheader("🔥 Ranking de Competidores")
+    # Gráfico de barras interactivo
+    st.bar_chart(data=res_df, x="Competidor", y="Puntos", color="Competidor")
     
-    st.subheader("📈 Rendimiento de Tickers")
-    st.bar_chart(df_mercado.set_index("Ticker")["Variacion"])
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        st.write("### 📋 Tabla de Posiciones")
+        st.dataframe(res_df.set_index("Competidor"), use_container_width=True)
+    
+    with col_t2:
+        st.write("### 📈 Mercado (Top 5 del Mes)")
+        st.table(df_mercado.head(5))
+
+    st.balloons() # ¡Festejo automático cuando termina el cálculo!
