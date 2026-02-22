@@ -1,17 +1,20 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
-# --- CONFIGURACIÓN ---
-st.set_page_config(page_title="Tablero de Control - Campeonato 2026", layout="wide")
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="Tablero Oficial - Campeonato 2026", layout="wide")
 
+# Lista oficial de 34 tickers (Yahoo usa guión para Berkshire)
 TICKERS = ["MSFT", "NVDA", "GOOGL", "META", "TSM", "V", "BRK-B", "JPM", "ASML", "INTC", "AMD", "COST", "WMT", "PG", "GE", "DE", "RTX", "JNJ", "UNH", "LLY", "AMZN", "TSLA", "KO", "AAPL", "AVGO", "SPY", "QQQ", "VTI", "ACWI", "XLE", "GLD", "IBIT", "ARKK", "COPX"]
 
-# Ronda 1 extendida según tus instrucciones
-RONDAS = {"Ronda 1": {"inicio": "2026-02-20", "fin": "2026-03-31"}}
+RONDAS = {
+    "Ronda 1 (Feb 20 - Mar 31)": {"inicio": "2026-02-20", "fin": "2026-03-31"},
+    "Ronda 2 (Abril)": {"inicio": "2026-04-01", "fin": "2026-04-30"}
+}
 
-# --- BASE DE DATOS COMPLETA (9 COMPETIDORES) ---
+# --- BASE DE DATOS COMPLETA DE LOS 9 COMPETIDORES ---
 DATOS_IA = {
     "GPT FRICAS": {"estrella": "XLE", "top15": ["NVDA", "META", "TSM", "ASML", "MSFT", "AMZN", "GOOGL", "LLY", "COST", "V", "QQQ", "GE", "DE", "SPY", "XLE"], "top3W": ["XLE", "RTX", "GLD"], "top3L": ["ARKK", "TSLA", "INTC"], "r3": {"neutral": ["PG", "JNJ", "ACWI"], "ganancia": ["V", "BRK-B", "WMT"], "mucha_gan": ["XLE", "RTX", "NVDA"], "perdida": ["JPM", "COPX", "RTX"], "mucha_perd": ["ARKK", "TSLA", "AMD"]}},
     "GPT WARREN": {"estrella": "NVDA", "top15": ["NVDA", "TSM", "ASML", "AMZN", "GOOGL", "WMT", "COST", "LLY", "RTX", "GE", "DE", "PG", "KO", "V", "BRK-B"], "top3W": ["NVDA", "TSM", "ASML"], "top3L": ["ARKK", "TSLA", "INTC"], "r3": {"neutral": ["PG", "KO", "JPM"], "ganancia": ["V", "BRK-B", "WMT"], "mucha_gan": ["NVDA", "TSM", "ASML"], "perdida": ["INTC", "AMD", "META"], "mucha_perd": ["ARKK", "TSLA", "INTC"]}},
@@ -24,33 +27,37 @@ DATOS_IA = {
     "CLAUDE WARREN": {"estrella": "JPM", "top15": ["JPM", "V", "BRK-B", "COST", "WMT", "PG", "KO", "JNJ", "UNH", "LLY", "AAPL", "MSFT", "GOOGL", "SPY", "ACWI"], "top3W": ["JPM", "V", "BRK-B"], "top3L": ["ARKK", "TSLA", "COPX"], "r3": {"neutral": ["PG", "KO", "JNJ"], "ganancia": ["UNH", "LLY", "AAPL"], "mucha_gan": ["JPM", "V", "BRK-B"], "perdida": ["MSFT", "GOOGL", "SPY"], "mucha_perd": ["ARKK", "TSLA", "COPX"]}}
 }
 
-# --- MOTOR DE CÁLCULO ---
-def obtener_score(ia, ranking_mkt, variaciones):
-    ia_data = DATOS_IA[ia]
-    p1 = len(set(ia_data["top15"]) & set(ranking_mkt[:15])) * 10
+# --- FUNCIONES DE CÁLCULO ---
+def calcular_reglas(ia, rank_actual, vars_actuales):
+    d = DATOS_IA[ia]
+    # R1: Top 15 (10 pts c/u)
+    p1 = len(set(d["top15"]) & set(rank_actual[:15])) * 10
     
+    # R2: Top 3 Win/Loss (50 base + 10 por pos exacta)
     p2 = 0
-    if set(ia_data["top3W"]) == set(ranking_mkt[:3]): p2 += 50
-    for i in range(3): 
-        if i < len(ranking_mkt) and ia_data["top3W"][i] == ranking_mkt[i]: p2 += 10
-    if set(ia_data["top3L"]) == set(ranking_mkt[-3:]): p2 += 50
+    if set(d["top3W"]) == set(rank_actual[:3]): p2 += 50
     for i in range(3):
-        if i < len(ranking_mkt) and ia_data["top3L"][i] == ranking_mkt[-(3-i)]: p2 += 10
+        if i < len(rank_actual) and d["top3W"][i] == rank_actual[i]: p2 += 10
+    if set(d["top3L"]) == set(rank_actual[-3:]): p2 += 50
+    for i in range(3):
+        if i < len(rank_actual) and d["top3L"][i] == rank_actual[-(3-i)]: p2 += 10
             
+    # R3: Rangos
     p3 = 0
-    for cat, tks in ia_data["r3"].items():
-        aciertos = 0
-        for t in tks:
-            v = variaciones.get(t, 0)
-            if cat=="neutral" and -1.5<=v<=1.5: p3+=2; aciertos+=1
-            elif cat=="ganancia" and 1.51<=v<=5: p3+=4; aciertos+=1
-            elif cat=="mucha_gan" and v>5: p3+=6; aciertos+=1
-            elif cat=="perdida" and -5<=v<=-1.51: p3-=1; aciertos+=1
-            elif cat=="mucha_perd" and v<-5: p3-=2; aciertos+=1
-        if aciertos == 3: p3 += 5
-        
+    for cat, tickers in d["r3"].items():
+        hits = 0
+        for t in tickers:
+            v = vars_actuales.get(t, 0)
+            if cat == "neutral" and -1.5 <= v <= 1.5: p3 += 2; hits += 1
+            elif cat == "ganancia" and 1.51 <= v <= 5: p3 += 4; hits += 1
+            elif cat == "mucha_gan" and v > 5: p3 += 6; hits += 1
+            elif cat == "perdida" and -5 <= v <= -1.51: p3 -= 1; hits += 1
+            elif cat == "mucha_perd" and v < -5: p3 -= 2; hits += 1
+        if hits == 3: p3 += 5 # Bonus grupo
+
+    # R4: Estrella
     p4 = 0
-    pos_est = ranking_mkt.index(ia_data["estrella"]) + 1
+    pos_est = rank_actual.index(d["estrella"]) + 1
     if pos_est == 1: p4 = 40
     elif pos_est <= 3: p4 = 20
     elif pos_est >= 25: p4 = -40
@@ -58,44 +65,52 @@ def obtener_score(ia, ranking_mkt, variaciones):
     return p1, p2, p3, p4
 
 # --- INTERFAZ ---
-st.title("🏆 Campeonato Bursátil 2026 - Control Center")
+st.sidebar.header("⚙️ Configuración")
+ronda_sel = st.sidebar.selectbox("Selecciona Ronda", list(RONDAS.keys()))
+fecha_inicio = RONDAS[ronda_sel]["inicio"]
 
-if st.sidebar.button("🚀 ACTUALIZAR SISTEMA"):
-    with st.spinner("Descargando historial y auditando reglas..."):
-        # Descarga histórica para la línea continua
-        data = yf.download(TICKERS, start=RONDAS["Ronda 1"]["inicio"])['Close'].ffill()
+if st.sidebar.button("🚀 ACTUALIZAR TABLERO"):
+    with st.spinner("Conectando con Wall Street..."):
+        # Descarga de datos
+        raw_data = yf.download(TICKERS, start=fecha_inicio)['Close'].ffill()
         
-        evolucion = pd.DataFrame(index=data.index)
-        desglose_final = []
-
-        for fecha in data.index:
-            precios_hoy = data.loc[fecha]
-            vars_hoy = ((precios_hoy / data.iloc[0]) - 1) * 100
-            rank_hoy = vars_hoy.sort_values(ascending=False).index.tolist()
+        if len(raw_data) > 0:
+            hist_puntos = pd.DataFrame(index=raw_data.index)
+            desglose = []
             
-            for ia in DATOS_IA.keys():
-                p1, p2, p3, p4 = obtener_score(ia, rank_hoy, vars_hoy.to_dict())
-                total = p1 + p2 + p3 + p4
-                evolucion.loc[fecha, ia] = total
-                if fecha == data.index[-1]:
-                    desglose_final.append({"Competidor": ia, "R1": p1, "R2": p2, "R3": p3, "R4": p4, "TOTAL": total})
+            # Recorrido diario
+            for i in range(len(raw_data)):
+                dia = raw_data.index[i]
+                precios_dia = raw_data.iloc[i]
+                vars_dia = ((precios_dia / raw_data.iloc[0]) - 1) * 100
+                rank_dia = vars_dia.sort_values(ascending=False).index.tolist()
+                
+                for ia in DATOS_IA.keys():
+                    p1, p2, p3, p4 = calcular_reglas(ia, rank_dia, vars_dia.to_dict())
+                    hist_puntos.loc[dia, ia] = p1 + p2 + p3 + p4
+                    if i == len(raw_data) - 1:
+                        desglose.append({"Competidor": ia, "R1": p1, "R2": p2, "R3": p3, "R4": p4, "TOTAL": p1+p2+p3+p4})
 
-        # 1. GRÁFICO DE LÍNEA CONTINUA (Estilo Google Finance)
-        st.subheader("📈 Evolución de Puntos (Histórico)")
-        st.line_chart(evolucion, height=450)
-        
+            # VISUALIZACIÓN
+            st.header(f"🏆 Estado del Campeonato: {ronda_sel}")
+            
+            # Gráfico Línea Continua
+            st.subheader("📈 Evolución Temporal (Puntos Totales)")
+            st.line_chart(hist_puntos)
+            
 
-        # 2. TABLA DE DESGLOSE POR REGLAS
-        st.subheader("📊 Auditoría de Reglas (Puntos al Corte)")
-        df_final = pd.DataFrame(desglose_final).sort_values("TOTAL", ascending=False)
-        st.dataframe(df_final.set_index("Competidor"), use_container_width=True)
+            # Tabla Desglose
+            st.subheader("📊 Auditoría por Reglas")
+            df_final = pd.DataFrame(desglose).sort_values("TOTAL", ascending=False)
+            st.dataframe(df_final.set_index("Competidor"), use_container_width=True)
 
-        # 3. RANKING DE MERCADO
-        st.subheader("🎯 Estado del Mercado (Top vs Bottom)")
-        col1, col2 = st.columns(2)
-        vars_actuales = ((data.iloc[-1] / data.iloc[0]) - 1) * 100
-        rank_actual = vars_actuales.sort_values(ascending=False)
-        with col1: st.write("**Top 5 Ganadoras**"); st.table(rank_actual.head(5))
-        with col2: st.write("**Top 5 Perdedoras**"); st.table(rank_actual.tail(5))
-
-    st.balloons()
+            # Mercado
+            st.subheader("🎯 Resumen de Mercado")
+            c1, c2 = st.columns(2)
+            ultimas_vars = ((raw_data.iloc[-1] / raw_data.iloc[0]) - 1) * 100
+            with c1: st.write("**Top 5 Alcistas**"); st.table(ultimas_vars.sort_values(ascending=False).head(5))
+            with c2: st.write("**Top 5 Bajistas**"); st.table(ultimas_vars.sort_values(ascending=True).head(5))
+            
+            st.balloons()
+        else:
+            st.error("No se pudieron descargar datos. Verifica la conexión.")
